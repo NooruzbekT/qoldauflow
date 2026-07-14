@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: qoldauflow
+          POSTGRES_PASSWORD: change_me
+          POSTGRES_DB: qoldauflow
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U qoldauflow -d qoldauflow"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      POSTGRES_USER: qoldauflow
+      POSTGRES_PASSWORD: change_me
+      POSTGRES_DB: qoldauflow
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+      CONFIDENCE_THRESHOLD: "0.5"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Train model
+        run: python -m app.ml.train
+
+      - name: Run tests
+        run: pytest -v
