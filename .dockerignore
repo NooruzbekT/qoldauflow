@@ -1,0 +1,14 @@
+.venv
+.git
+.env
+.claude
+__pycache__
+*.py[cod]
+.pytest_cache
+artifacts
+data
+reports
+docs
+tests
+backend-ml-junior-task.md
+CLAUDE.md
