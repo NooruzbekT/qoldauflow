@@ -1,11 +1,13 @@
 import asyncpg
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.config import get_settings
 from app.db.session import get_session
 from app.main import app
+from app.ml.embedder import get_embedder
 from app.ml.predictor import get_predictor
 from app.models.base import Base
 
@@ -37,6 +39,7 @@ async def engine():
     )
     engine = create_async_engine(url)
     async with engine.begin() as conn:
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
     yield engine
@@ -56,6 +59,10 @@ async def client(engine):
     predictor = get_predictor()
     if not predictor.is_ready:
         predictor.load()
+
+    embedder = get_embedder()
+    if not embedder.is_ready:
+        embedder.load()
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as test_client:

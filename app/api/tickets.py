@@ -4,12 +4,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.db.session import get_session
+from app.ml.embedder import get_embedder
 from app.ml.predictor import get_predictor
 from app.models.ticket import Ticket, TicketFeedback
 from app.schemas.ticket import (
     FeedbackCreate,
     FeedbackResponse,
     Label,
+    SimilarTicketResponse,
     TicketCreate,
     TicketDetailResponse,
     TicketListResponse,
@@ -31,6 +33,7 @@ async def create_ticket(
         )
 
     prediction = predictor.predict(payload.text)
+    embedder = get_embedder()
     ticket = Ticket(
         text=payload.text,
         language=payload.language.value,
@@ -38,6 +41,7 @@ async def create_ticket(
         confidence=prediction.confidence,
         top_predictions=prediction.top_predictions,
         needs_review=prediction.needs_review,
+        embedding=embedder.embed(payload.text) if embedder.is_ready else None,
     )
     session.add(ticket)
     await session.commit()
@@ -82,6 +86,40 @@ async def get_ticket(
             status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found"
         )
     return ticket
+
+
+@router.get("/{ticket_id}/similar", response_model=list[SimilarTicketResponse])
+async def similar_tickets(
+    ticket_id: int, session: AsyncSession = Depends(get_session)
+) -> list[SimilarTicketResponse]:
+    ticket = await session.get(Ticket, ticket_id)
+    if ticket is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found"
+        )
+    if ticket.embedding is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Embedding is not available for this ticket",
+        )
+
+    distance = Ticket.embedding.cosine_distance(ticket.embedding).label("distance")
+    rows = await session.execute(
+        select(Ticket, distance)
+        .where(Ticket.id != ticket_id, Ticket.embedding.is_not(None))
+        .order_by(distance)
+        .limit(5)
+    )
+    return [
+        SimilarTicketResponse(
+            id=row.Ticket.id,
+            text=row.Ticket.text,
+            language=row.Ticket.language,
+            predicted_label=row.Ticket.predicted_label,
+            similarity=round(1 - row.distance, 4),
+        )
+        for row in rows
+    ]
 
 
 @router.post(

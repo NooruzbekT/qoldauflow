@@ -7,6 +7,7 @@ from sqlalchemy.exc import DBAPIError, InterfaceError, OperationalError
 
 from app.api.health import router as health_router
 from app.api.tickets import router as tickets_router
+from app.ml.embedder import get_embedder
 from app.ml.predictor import get_predictor
 
 logger = logging.getLogger(__name__)
@@ -20,6 +21,12 @@ async def lifespan(app: FastAPI):
     except FileNotFoundError as exc:
         # сервис стартует и без модели: /health и чтение работают, POST /tickets вернёт 503
         logger.warning("ML model is not available: %s", exc)
+    try:
+        get_embedder().load()
+        logger.info("Embedding model loaded")
+    except Exception as exc:
+        # без эмбеддера сервис работает, недоступен только GET /tickets/{id}/similar
+        logger.warning("Embedding model is not available: %s", exc)
     yield
 
 

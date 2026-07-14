@@ -77,3 +77,11 @@ class TicketListResponse(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class SimilarTicketResponse(BaseModel):
+    id: int
+    text: str
+    language: Language
+    predicted_label: Label
+    similarity: float

@@ -114,6 +114,33 @@ async def test_list_pagination_and_filters(client):
     assert all(item["needs_review"] is False for item in body["items"])
 
 
+async def test_similar_tickets(client):
+    texts = [
+        "Не могу войти в аккаунт после смены телефона",
+        "Забыл пароль от аккаунта, восстановление не работает",
+        "Аккаунт заблокирован, не могу зайти",
+        "Курьер не привёз заказ вовремя",
+        "Деньги списались дважды при оплате",
+        "Приложение вылетает при запуске",
+    ]
+    ids = [(await create_ticket(client, text=t)).json()["id"] for t in texts]
+
+    response = await client.get(f"/tickets/{ids[0]}/similar")
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 5
+    assert ids[0] not in [item["id"] for item in body]
+    similarities = [item["similarity"] for item in body]
+    assert similarities == sorted(similarities, reverse=True)
+    # ближайшим должен оказаться другой текст про вход в аккаунт
+    assert body[0]["id"] in (ids[1], ids[2])
+
+
+async def test_similar_ticket_not_found(client):
+    response = await client.get("/tickets/99999/similar")
+    assert response.status_code == 404
+
+
 async def test_health(client):
     response = await client.get("/health")
     assert response.status_code == 200

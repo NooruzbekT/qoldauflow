@@ -1,9 +1,11 @@
 from datetime import datetime
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import DateTime, Float, ForeignKey, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.ml.embedder import EMBEDDING_DIM
 from app.models.base import Base
 
 
@@ -19,6 +21,9 @@ class Ticket(Base):
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
     top_predictions: Mapped[list] = mapped_column(JSONB, nullable=False)
     needs_review: Mapped[bool] = mapped_column(nullable=False, default=False)
+
+    # nullable: тикет создаётся и без embedding-модели, similar тогда недоступен
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIM), nullable=True)
 
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="open")
     created_at: Mapped[datetime] = mapped_column(
