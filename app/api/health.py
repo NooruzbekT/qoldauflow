@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -5,6 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_session
 from app.ml.predictor import get_predictor
 from app.schemas.health import HealthResponse
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["health"])
 
@@ -16,7 +20,8 @@ async def health(
     try:
         await session.execute(text("SELECT 1"))
         database = "ok"
-    except Exception:
+    except Exception as exc:
+        logger.error("Health check: database probe failed: %s", exc)
         database = "unavailable"
 
     model = "ok" if get_predictor().is_ready else "unavailable"

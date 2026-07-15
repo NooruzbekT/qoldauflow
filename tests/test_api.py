@@ -1,4 +1,6 @@
-VALID_LABELS = {"payment", "delivery", "account", "technical"}
+from app.schemas.ticket import Label
+
+VALID_LABELS = {label.value for label in Label}
 
 
 async def create_ticket(client, text="Не могу войти в аккаунт после смены телефона", language="ru"):
@@ -36,7 +38,6 @@ async def test_create_ticket_invalid_language(client):
 
 
 async def test_needs_review_rule(client):
-    # флаг обязан быть согласован с порогом из конфига
     from app.core.config import get_settings
 
     threshold = get_settings().confidence_threshold

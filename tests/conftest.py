@@ -33,10 +33,7 @@ async def ensure_test_database() -> None:
 async def engine():
     await ensure_test_database()
     settings = get_settings()
-    url = (
-        f"postgresql+asyncpg://{settings.postgres_user}:{settings.postgres_password}"
-        f"@{settings.postgres_host}:{settings.postgres_port}/{TEST_DB}"
-    )
+    url = settings.database_url.rsplit("/", 1)[0] + f"/{TEST_DB}"
     engine = create_async_engine(url)
     async with engine.begin() as conn:
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))

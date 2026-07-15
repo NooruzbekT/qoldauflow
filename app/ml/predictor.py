@@ -1,26 +1,19 @@
+from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 import joblib
 from sklearn.pipeline import Pipeline
 
-from app.core.config import get_settings
-from app.ml.train import MODEL_FILENAME
+from app.core.config import MODEL_FILENAME, get_settings
 
 
+@dataclass(frozen=True, slots=True)
 class PredictionResult:
-    __slots__ = ("predicted_label", "confidence", "top_predictions", "needs_review")
-
-    def __init__(
-        self,
-        predicted_label: str,
-        confidence: float,
-        top_predictions: list[dict],
-        needs_review: bool,
-    ) -> None:
-        self.predicted_label = predicted_label
-        self.confidence = confidence
-        self.top_predictions = top_predictions
-        self.needs_review = needs_review
+    predicted_label: str
+    confidence: float
+    top_predictions: list[dict]
+    needs_review: bool
 
 
 class TicketPredictor:
@@ -62,15 +55,10 @@ class TicketPredictor:
         )
 
 
-_predictor: TicketPredictor | None = None
-
-
+@lru_cache
 def get_predictor() -> TicketPredictor:
-    global _predictor
-    if _predictor is None:
-        settings = get_settings()
-        _predictor = TicketPredictor(
-            model_path=settings.artifacts_dir / MODEL_FILENAME,
-            confidence_threshold=settings.confidence_threshold,
-        )
-    return _predictor
+    settings = get_settings()
+    return TicketPredictor(
+        model_path=settings.artifacts_dir / MODEL_FILENAME,
+        confidence_threshold=settings.confidence_threshold,
+    )

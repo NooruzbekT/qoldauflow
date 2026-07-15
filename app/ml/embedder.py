@@ -1,6 +1,4 @@
-import logging
-
-logger = logging.getLogger(__name__)
+from functools import lru_cache
 
 # LaBSE выбрана по кросс-языковому бенчмарку ru<->kk: recall@5=1.00 против 0.54 у MiniLM
 # (docs/benchmarks/bench_embeddings.py)
@@ -20,7 +18,15 @@ class TicketEmbedder:
     def load(self) -> None:
         from sentence_transformers import SentenceTransformer
 
-        self._model = SentenceTransformer(self._model_name)
+        model = SentenceTransformer(self._model_name)
+        model_dim = model.get_embedding_dimension()
+        if model_dim != EMBEDDING_DIM:
+            # размерность колонки в БД зафиксирована миграцией — смена модели требует новую миграцию
+            raise RuntimeError(
+                f"Embedding model {self._model_name} has dim {model_dim}, "
+                f"but DB column expects {EMBEDDING_DIM}"
+            )
+        self._model = model
 
     def embed(self, text: str) -> list[float]:
         if self._model is None:
@@ -28,11 +34,6 @@ class TicketEmbedder:
         return self._model.encode(text, normalize_embeddings=True).tolist()
 
 
-_embedder: TicketEmbedder | None = None
-
-
+@lru_cache
 def get_embedder() -> TicketEmbedder:
-    global _embedder
-    if _embedder is None:
-        _embedder = TicketEmbedder()
-    return _embedder
+    return TicketEmbedder()

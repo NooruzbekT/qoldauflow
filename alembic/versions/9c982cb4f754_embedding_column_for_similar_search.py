@@ -11,7 +11,6 @@ import pgvector.sqlalchemy
 import sqlalchemy as sa
 from alembic import op
 
-# revision identifiers, used by Alembic.
 revision: str = '9c982cb4f754'
 down_revision: Union[str, Sequence[str], None] = '82da73b87d94'
 branch_labels: Union[str, Sequence[str], None] = None

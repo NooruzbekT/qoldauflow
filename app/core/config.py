@@ -4,6 +4,7 @@ from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
+MODEL_FILENAME = "model.joblib"
 
 
 class Settings(BaseSettings):

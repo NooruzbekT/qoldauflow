@@ -9,11 +9,16 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # embedding-модель кэшируется в образ, старт контейнера не зависит от сети
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/LaBSE')"
+ENV HF_HOME=/opt/hf-cache
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/LaBSE')" \
+    && useradd --create-home appuser \
+    && chown -R appuser /opt/hf-cache
 
 COPY alembic.ini .
 COPY alembic ./alembic
 COPY app ./app
+
+USER appuser
 
 EXPOSE 8000
 

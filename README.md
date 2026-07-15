@@ -8,7 +8,7 @@ Python 3.13 · FastAPI · Pydantic · PostgreSQL (SQLAlchemy Async + Alembic) ·
 
 ## Быстрый старт с чистого клона
 
-Требуются Docker и Python 3.13+.
+Требуются Docker и Python 3.13+. Строка с torch ставит лёгкую CPU-сборку (та же, что в Docker и CI); без неё pip на Linux потянет многогигабайтную CUDA-версию.
 
 ```bash
 git clone https://github.com/NooruzbekT/qoldauflow.git
@@ -17,6 +17,7 @@ cp .env.example .env
 
 # зависимости и обучение модели (артефакт попадёт в artifacts/)
 python -m venv .venv && . .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install torch==2.13.0 --index-url https://download.pytorch.org/whl/cpu
 pip install -r requirements.txt
 python -m app.ml.train
 

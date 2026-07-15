@@ -1,7 +1,9 @@
+import anyio.to_thread
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from sqlalchemy.sql.base import ExecutableOption
 
 from app.db.session import get_session
 from app.ml.embedder import get_embedder
@@ -22,6 +24,20 @@ from app.schemas.ticket import (
 router = APIRouter(prefix="/tickets", tags=["tickets"])
 
 
+async def get_ticket_or_404(
+    session: AsyncSession, ticket_id: int, *options: ExecutableOption
+) -> Ticket:
+    query = select(Ticket).where(Ticket.id == ticket_id)
+    if options:
+        query = query.options(*options)
+    ticket = await session.scalar(query)
+    if ticket is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found"
+        )
+    return ticket
+
+
 @router.post("", response_model=TicketResponse, status_code=status.HTTP_201_CREATED)
 async def create_ticket(
     payload: TicketCreate, session: AsyncSession = Depends(get_session)
@@ -32,8 +48,13 @@ async def create_ticket(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="ML model is not available"
         )
 
-    prediction = predictor.predict(payload.text)
+    # CPU-инференс уводится в threadpool, чтобы не блокировать event loop
+    prediction = await anyio.to_thread.run_sync(predictor.predict, payload.text)
     embedder = get_embedder()
+    embedding = None
+    if embedder.is_ready:
+        embedding = await anyio.to_thread.run_sync(embedder.embed, payload.text)
+
     ticket = Ticket(
         text=payload.text,
         language=payload.language.value,
@@ -41,11 +62,11 @@ async def create_ticket(
         confidence=prediction.confidence,
         top_predictions=prediction.top_predictions,
         needs_review=prediction.needs_review,
-        embedding=embedder.embed(payload.text) if embedder.is_ready else None,
+        embedding=embedding,
     )
     session.add(ticket)
     await session.commit()
-    await session.refresh(ticket)
+    await session.refresh(ticket, attribute_names=["created_at"])
     return ticket
 
 
@@ -70,33 +91,21 @@ async def list_tickets(
     rows = await session.scalars(
         query.order_by(Ticket.id.desc()).limit(limit).offset(offset)
     )
-    items = [TicketResponse.model_validate(row) for row in rows]
-    return TicketListResponse(items=items, total=total, limit=limit, offset=offset)
+    return TicketListResponse(items=list(rows), total=total, limit=limit, offset=offset)
 
 
 @router.get("/{ticket_id}", response_model=TicketDetailResponse)
 async def get_ticket(
     ticket_id: int, session: AsyncSession = Depends(get_session)
 ) -> Ticket:
-    ticket = await session.scalar(
-        select(Ticket).where(Ticket.id == ticket_id).options(selectinload(Ticket.feedbacks))
-    )
-    if ticket is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found"
-        )
-    return ticket
+    return await get_ticket_or_404(session, ticket_id, selectinload(Ticket.feedbacks))
 
 
 @router.get("/{ticket_id}/similar", response_model=list[SimilarTicketResponse])
 async def similar_tickets(
     ticket_id: int, session: AsyncSession = Depends(get_session)
 ) -> list[SimilarTicketResponse]:
-    ticket = await session.get(Ticket, ticket_id)
-    if ticket is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found"
-        )
+    ticket = await get_ticket_or_404(session, ticket_id)
     if ticket.embedding is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -116,7 +125,8 @@ async def similar_tickets(
             text=row.Ticket.text,
             language=row.Ticket.language,
             predicted_label=row.Ticket.predicted_label,
-            similarity=round(1 - row.distance, 4),
+            # cosine_distance лежит в [0..2] — без клампа similarity ушла бы в минус
+            similarity=round(max(0.0, 1 - row.distance), 4),
         )
         for row in rows
     ]
@@ -130,11 +140,7 @@ async def similar_tickets(
 async def create_feedback(
     ticket_id: int, payload: FeedbackCreate, session: AsyncSession = Depends(get_session)
 ) -> TicketFeedback:
-    ticket = await session.get(Ticket, ticket_id)
-    if ticket is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found"
-        )
+    ticket = await get_ticket_or_404(session, ticket_id)
 
     feedback = TicketFeedback(
         ticket_id=ticket.id,
@@ -144,5 +150,5 @@ async def create_feedback(
     ticket.status = TicketStatus.reviewed.value
     session.add(feedback)
     await session.commit()
-    await session.refresh(feedback)
+    await session.refresh(feedback, attribute_names=["created_at"])
     return feedback

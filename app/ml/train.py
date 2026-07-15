@@ -5,17 +5,17 @@ import pandas as pd
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import classification_report, f1_score
+from sklearn.metrics import classification_report
 from sklearn.model_selection import GridSearchCV, train_test_split
 from sklearn.naive_bayes import ComplementNB
 from sklearn.pipeline import FeatureUnion, Pipeline
 from sklearn.svm import LinearSVC
 
-from app.core.config import BASE_DIR, get_settings
+from app.core.config import BASE_DIR, MODEL_FILENAME, get_settings
+from app.schemas.ticket import Label, Language
 
 DATA_PATH = BASE_DIR / "data" / "tickets.csv"
 REPORTS_DIR = BASE_DIR / "reports"
-MODEL_FILENAME = "model.joblib"
 RANDOM_STATE = 42
 TEST_SIZE = 0.2
 CV_FOLDS = 5
@@ -70,8 +70,20 @@ def candidates() -> list[tuple[str, Pipeline, dict]]:
     ]
 
 
+def validate_dataset(df: pd.DataFrame) -> None:
+    bad_labels = set(df["label"].unique()) - {label.value for label in Label}
+    if bad_labels:
+        raise ValueError(f"Unknown labels in dataset: {bad_labels}")
+    bad_languages = set(df["language"].unique()) - {lang.value for lang in Language}
+    if bad_languages:
+        raise ValueError(f"Unknown languages in dataset: {bad_languages}")
+    if df["text"].isna().any() or (df["text"].str.strip() == "").any():
+        raise ValueError("Dataset contains empty texts")
+
+
 def train() -> None:
     df = pd.read_csv(DATA_PATH)
+    validate_dataset(df)
 
     x_train, x_test, y_train, y_test = train_test_split(
         df["text"],
@@ -98,7 +110,8 @@ def train() -> None:
 
     model = best_search.best_estimator_
     y_pred = model.predict(x_test)
-    macro_f1 = f1_score(y_test, y_pred, average="macro")
+    report_dict = classification_report(y_test, y_pred, output_dict=True)
+    macro_f1 = report_dict["macro avg"]["f1-score"]
 
     print(f"\nbest model: {best_name}")
     print(classification_report(y_test, y_pred))
@@ -110,7 +123,7 @@ def train() -> None:
         "best_params": comparison[best_name]["best_params"],
         "cv_macro_f1": comparison[best_name]["cv_macro_f1"],
         "macro_f1": round(macro_f1, 4),
-        "classification_report": classification_report(y_test, y_pred, output_dict=True),
+        "classification_report": report_dict,
         "model_comparison": comparison,
         "train_size": len(x_train),
         "test_size": len(x_test),
